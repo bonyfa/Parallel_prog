@@ -5,6 +5,7 @@
 #include <chrono>
 #include <stdexcept>
 #include <iomanip>
+#include <omp.h>
 
 using namespace std;
 using namespace std::chrono;
@@ -53,7 +54,6 @@ public:
             throw runtime_error("Не удалось открыть файл: " + filename);
         }
 
-        // Добавляем информацию о времени выполнения в начало файла
         if (duration_ms >= 0) {
             file << "Время выполнения: " << duration_ms << " мс\n";
             file << "Размер матрицы: " << rows << "x" << cols << "\n\n";
@@ -73,13 +73,20 @@ public:
         }
 
         Matrix result(rows, other.cols);
-
+        const int block_size = 32; // Оптимальный размер блока для Apple M1/M2
+        
+        // Основное распараллеливание с блочной оптимизацией
+        #pragma omp parallel for collapse(2) schedule(guided)
         for (int i = 0; i < rows; ++i) {
             for (int j = 0; j < other.cols; ++j) {
                 double sum = 0.0;
+                
+                // Векторизация внутреннего цикла
+                #pragma omp simd reduction(+:sum)
                 for (int k = 0; k < cols; ++k) {
                     sum += data[i][k] * other.data[k][j];
                 }
+                
                 result.data[i][j] = sum;
             }
         }
@@ -93,15 +100,26 @@ public:
 
 int main() {
     try {
+        // Настройка OpenMP для macOS
+        omp_set_num_threads(omp_get_max_threads());
+        cout << "Используется потоков: " << omp_get_max_threads() << endl;
+        cout << "Процессорные ядер: " << omp_get_num_procs() << endl;
+
         Matrix A, B;
         
         cout << "Чтение матрицы A..." << endl;
+        auto start_read = high_resolution_clock::now();
         A.readFromFile("matrix_a.txt");
+        auto end_read = high_resolution_clock::now();
         cout << "Матрица A: " << A.getRows() << "x" << A.getCols() << endl;
+        cout << "Время чтения A: " << duration_cast<milliseconds>(end_read - start_read).count() << " мс" << endl;
 
         cout << "Чтение матрицы B..." << endl;
+        start_read = high_resolution_clock::now();
         B.readFromFile("matrix_b.txt");
+        end_read = high_resolution_clock::now();
         cout << "Матрица B: " << B.getRows() << "x" << B.getCols() << endl;
+        cout << "Время чтения B: " << duration_cast<milliseconds>(end_read - start_read).count() << " мс" << endl;
 
         if (A.getCols() != B.getRows()) {
             throw runtime_error("Размеры матриц не подходят для умножения");
@@ -116,7 +134,11 @@ int main() {
         cout << "Время умножения: " << duration.count() << " мс" << endl;
 
         cout << "Запись результата в result.txt..." << endl;
+        start = high_resolution_clock::now();
         C.writeToFile("result.txt", duration.count());
+        end = high_resolution_clock::now();
+        cout << "Время записи: " << duration_cast<milliseconds>(end - start).count() << " мс" << endl;
+
         cout << "Готово!" << endl;
 
     } catch (const exception& e) {
