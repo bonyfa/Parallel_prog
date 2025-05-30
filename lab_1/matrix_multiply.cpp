@@ -4,6 +4,7 @@
 #include <sstream>
 #include <chrono>
 #include <stdexcept>
+#include <iomanip>
 
 using namespace std;
 using namespace std::chrono;
@@ -15,17 +16,14 @@ private:
     int cols;
 
 public:
-    // Конструктор по умолчанию
     Matrix() : rows(0), cols(0) {}
     
-    // Конструктор с размерами
     Matrix(int r, int c) : rows(r), cols(c), data(r, vector<double>(c)) {}
     
-    // Чтение матрицы из файла
     void readFromFile(const string& filename) {
         ifstream file(filename);
         if (!file.is_open()) {
-            throw runtime_error("Cannot open file: " + filename);
+            throw runtime_error("Не удалось открыть файл: " + filename);
         }
 
         string line;
@@ -42,18 +40,23 @@ public:
             if (cols == 0) {
                 cols = row.size();
             } else if (row.size() != cols) {
-                throw runtime_error("Inconsistent number of columns in " + filename);
+                throw runtime_error("Несогласованное количество столбцов в файле " + filename);
             }
             data.push_back(row);
         }
         rows = data.size();
     }
 
-    // Запись матрицы в файл
-    void writeToFile(const string& filename) const {
+    void writeToFile(const string& filename, long long duration_ms = -1) const {
         ofstream file(filename);
         if (!file.is_open()) {
-            throw runtime_error("Cannot open file: " + filename);
+            throw runtime_error("Не удалось открыть файл: " + filename);
+        }
+
+        // Добавляем информацию о времени выполнения в начало файла
+        if (duration_ms >= 0) {
+            file << "Время выполнения: " << duration_ms << " мс\n";
+            file << "Размер матрицы: " << rows << "x" << cols << "\n\n";
         }
 
         for (const auto& row : data) {
@@ -64,36 +67,23 @@ public:
         }
     }
 
-    // Умножение матриц с транспонированием
-    Matrix multiplyWithTranspose(const Matrix& other) const {
+    Matrix multiply(const Matrix& other) const {
         if (cols != other.rows) {
-            throw runtime_error("Matrix dimensions mismatch for multiplication");
+            throw runtime_error("Несовместимые размеры матриц для умножения");
         }
 
         Matrix result(rows, other.cols);
-        Matrix otherTransposed = other.transpose();
 
         for (int i = 0; i < rows; ++i) {
             for (int j = 0; j < other.cols; ++j) {
                 double sum = 0.0;
                 for (int k = 0; k < cols; ++k) {
-                    sum += data[i][k] * otherTransposed.data[j][k];
+                    sum += data[i][k] * other.data[k][j];
                 }
                 result.data[i][j] = sum;
             }
         }
 
-        return result;
-    }
-
-    // Транспонирование матрицы
-    Matrix transpose() const {
-        Matrix result(cols, rows);
-        for (int i = 0; i < rows; ++i) {
-            for (int j = 0; j < cols; ++j) {
-                result.data[j][i] = data[i][j];
-            }
-        }
         return result;
     }
 
@@ -105,32 +95,32 @@ int main() {
     try {
         Matrix A, B;
         
-        cout << "Reading matrix A..." << endl;
+        cout << "Чтение матрицы A..." << endl;
         A.readFromFile("matrix_a.txt");
-        cout << "Matrix A: " << A.getRows() << "x" << A.getCols() << endl;
+        cout << "Матрица A: " << A.getRows() << "x" << A.getCols() << endl;
 
-        cout << "Reading matrix B..." << endl;
+        cout << "Чтение матрицы B..." << endl;
         B.readFromFile("matrix_b.txt");
-        cout << "Matrix B: " << B.getRows() << "x" << B.getCols() << endl;
+        cout << "Матрица B: " << B.getRows() << "x" << B.getCols() << endl;
 
         if (A.getCols() != B.getRows()) {
-            throw runtime_error("Matrix dimensions are not compatible for multiplication");
+            throw runtime_error("Размеры матриц не подходят для умножения");
         }
 
-        cout << "Multiplying matrices..." << endl;
+        cout << "Умножение матриц..." << endl;
         auto start = high_resolution_clock::now();
-        Matrix C = A.multiplyWithTranspose(B);
+        Matrix C = A.multiply(B);
         auto end = high_resolution_clock::now();
 
         auto duration = duration_cast<milliseconds>(end - start);
-        cout << "Multiplication time: " << duration.count() << " ms" << endl;
+        cout << "Время умножения: " << duration.count() << " мс" << endl;
 
-        cout << "Writing result to result.txt..." << endl;
-        C.writeToFile("result.txt");
-        cout << "Done!" << endl;
+        cout << "Запись результата в result.txt..." << endl;
+        C.writeToFile("result.txt", duration.count());
+        cout << "Готово!" << endl;
 
     } catch (const exception& e) {
-        cerr << "Error: " << e.what() << endl;
+        cerr << "Ошибка: " << e.what() << endl;
         return 1;
     }
 
